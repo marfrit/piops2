@@ -1,15 +1,50 @@
 .program readps2
+;    irq nowait 0
 .wrap_target
-    set  x,    10
-    IRQ wait 0
-read_bit:
-    wait 0     GPIO 17 
-    nop  [2]
+    wait 1 irq 0
+    set pindirs 0
+    wait 0     GPIO 17 [14]
     in   pins, 1
     wait 1     GPIO 17
-    jmp  x--,  read_bit
-    IRQ clear 0
-    push
+    IRQ nowait 0
+.wrap
+
+.program pinstate
+;    irq nowait 0
+.wrap_target
+    pull
+    wait 1 irq 0
+    set pindirs, 3
+    out pins, 2
+    IRQ nowait 0
+;    set pindirs 0
+.wrap
+
+.program writeps2
+    irq nowait 0
+.wrap_target
+    pull
+    wait 1 irq 0
+    set pindirs, 3
+    set pins, 2
+    wait 0 GPIO 17
+    set pindirs, 1
+    set x, 8
+outbits:
+    nop [2]
+    out pins, 1
+    wait 1 GPIO 17
+    wait 0 GPIO 17
+    jmp x-- outbits
+    nop [2]
+    set pins, 1 [5]
+    set pindirs 0
+    wait 0 GPIO 16
+;    wait 0 GPIO 17
+;    wait 1 GPIO 17
+    wait 1 GPIO 16
+    set pindirs, 0
+    irq nowait 0
 .wrap
 
 % c-sdk {
@@ -38,36 +73,22 @@ static inline void readps2_program_init(PIO pio, uint sm, uint offset, uint pin)
         11    // Autopush threshold = 11 (start + 8 bits data + parity + stop)
     );
 
-    sm_config_set_clkdiv(&c, 625); // one cycle is 5 microseconds
+    sm_config_set_clkdiv(&c, 125); // one cycle is 1 microsecond
 
     // Load our configuration, and start the program from the beginning
     pio_sm_init(pio, sm, offset, &c);
     pio_sm_set_enabled(pio, sm, true);
 }
-%}
 
-.program inhibit
-.wrap_target
-    pull 
-    IRQ nowait 0
-    set pindirs, 2
-    set pins, 0 [22] ; add
-    set pindirs, 0
-    out NULL, 1
-    IRQ clear 0
-.wrap
-
-
-% c-sdk {
-static inline void inhibit_program_init(PIO pio, uint sm, uint offset, uint pin) {
-    pio_sm_config c = inhibit_program_get_default_config(offset);
+static inline void pinstate_program_init(PIO pio, uint sm, uint offset, uint pin) {
+    pio_sm_config c = pinstate_program_get_default_config(offset);
 
     // Set the IN base pin to the provided `pin` parameter. This is the data
     // pin, and the next-numbered GPIO is used as the clock pin.
     sm_config_set_in_pins(&c, pin);
 
     // Set the pin directions to input at the PIO
-    pio_sm_set_consecutive_pindirs(pio, sm, pin, 2, false);
+    pio_sm_set_consecutive_pindirs(pio, sm, pin, 2, true);
 
     sm_config_set_out_pins(&c, pin, 2);
     sm_config_set_set_pins(&c, pin, 2);
@@ -81,7 +102,7 @@ static inline void inhibit_program_init(PIO pio, uint sm, uint offset, uint pin)
         &c,
         true,  // Shift-to-right = true
         false, // Autopull disabled
-        1      // Autopull threshold = 1 
+        1      // Autopull threshold = 1
     );
 
     sm_config_set_clkdiv(&c, 625); // one cycle is 5 microseconds
@@ -91,27 +112,7 @@ static inline void inhibit_program_init(PIO pio, uint sm, uint offset, uint pin)
     pio_sm_set_enabled(pio, sm, true);
 
 }
-%}
 
-.program writeps2
-.wrap_target
-    pull 
-;    IRQ wait 0
-    set pindirs, 1
-    set x, 9
-    set pins, 0
-write_bit:
-    wait 0     GPIO 17
-    out  pins, 1
-    wait 1     GPIO 17
-    jmp  x--,  write_bit
-;    out NULL, 10
-;    IRQ clear 0
-    set pindirs, 0
-.wrap
-
-
-% c-sdk {
 static inline void writeps2_program_init(PIO pio, uint sm, uint offset, uint pin) {
     pio_sm_config c = writeps2_program_get_default_config(offset);
 
@@ -120,7 +121,7 @@ static inline void writeps2_program_init(PIO pio, uint sm, uint offset, uint pin
     sm_config_set_in_pins(&c, pin);
 
     // Set the pin directions to input at the PIO
-    pio_sm_set_consecutive_pindirs(pio, sm, pin, 2, false);
+    pio_sm_set_consecutive_pindirs(pio, sm, pin, 2, true);
 
     sm_config_set_out_pins(&c, pin, 2);
     sm_config_set_set_pins(&c, pin, 2);
@@ -134,7 +135,7 @@ static inline void writeps2_program_init(PIO pio, uint sm, uint offset, uint pin
         &c,
         true,  // Shift-to-right = true
         false, // Autopull disabled
-        10      // Autopull threshold = 11 
+        9      // Autopull threshold = 1
     );
 
     sm_config_set_clkdiv(&c, 625); // one cycle is 5 microseconds

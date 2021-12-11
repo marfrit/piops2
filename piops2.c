@@ -22,9 +22,9 @@ int main() {
 
     printf("Loaded program at %d\n", offset);
 
-    uint offset2 = pio_add_program(pio, &inhibit_program);
+    uint offset2 = pio_add_program(pio, &pinstate_program);
     uint sm2 = pio_claim_unused_sm(pio, true);
-    inhibit_program_init(pio, sm2, offset2, PS2_INPUT_PIN_BASE);
+    pinstate_program_init(pio, sm2, offset2, PS2_INPUT_PIN_BASE);
 
     uint offset3 = pio_add_program(pio, &writeps2_program);
     uint sm3 = pio_claim_unused_sm(pio, true);
@@ -32,20 +32,16 @@ int main() {
 
     sleep_ms(2500);
 
+    pio_sm_put_blocking(pio, sm2, 2);
+    sleep_ms(10);
+    pio_sm_put_blocking(pio, sm3, 511);
+//    sleep_us(2);
     pio_sm_put_blocking(pio, sm2, 1);
+    sleep_us(100);
+    pio_sm_put_blocking(pio, sm2, 3);
 
-//    pio_sm_put_blocking(pio, sm3, 1023);
-//    sleep_ms(100);
-//    pio_sm_put_blocking(pio, sm2, 1);
-
-//    pio_sm_put_blocking(pio, sm3, 993);
-//    sleep_ms(100);
+    printf("I got here!\n");
     while (1) {
-
-//    pio_sm_put_blocking(pio, sm3, 1023);
-//    sleep_ms(100);
-
-
         if (pio_sm_get_rx_fifo_level(pio, sm) > 0) {
             rxdata = pio_sm_get_blocking(pio, sm);
         } else {
@@ -54,9 +50,17 @@ int main() {
         if (rxdata) {
             code = (rxdata >> 22) & 0xff;
             printf("received 0x%02x\n", code);
-//            pio->irq_force = 1;
-//            irq_set_enabled(PIO1_IRQ_0, true);
-//            pio_sm_put_blocking(pio, sm2, 1);
+        }
+        if (code == 0xbe) {
+            pio_sm_put_blocking(pio, sm2, 1);
+            sleep_us(100);
+            pio_sm_put_blocking(pio, sm2, 2);
+            sleep_ms(10);
+            pio_sm_put_blocking(pio, sm3, 496);
+//            sleep_us(2);
+            pio_sm_put_blocking(pio, sm2, 1);
+            sleep_us(100);
+            pio_sm_put_blocking(pio, sm2, 3);
         }
     }
 
