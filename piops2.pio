@@ -1,51 +1,62 @@
 .program readps2
-;    irq nowait 0
+    irq nowait 0
 .wrap_target
     wait 1 irq 0
     set pindirs 0
-    wait 0     GPIO 17 [14]
+    wait 0     GPIO 17 ; [9]
     in   pins, 1
     wait 1     GPIO 17
     IRQ nowait 0
 .wrap
+; 7
 
-.program pinstate
-;    irq nowait 0
+.program getpins
 .wrap_target
-    pull
-    wait 1 irq 0
-    set pindirs, 3
-    out pins, 2
-    IRQ nowait 0
-;    set pindirs 0
+    in pins, 2
 .wrap
+; 8
 
-.program writeps2
+.program setpins
+; The PS/2 keyboard protocol is an open collector protocol, so 
+; setting pins to output is a low state, setting pins to output
+; is a high state
+.side_set 2 opt pindirs
+    irq nowait 0    side 0b00
+.wrap_target
+    wait 1 irq 0
+    out x, 1
+    out y, 1
+    jmp !x, nullodereins      ; FIFO can be 01 or 11
+    jmp !y, istzwei           ; FIFA was 10
+    jmp ende        side 0b11 ; FIFO was 11
+nullodereins:
+    jmp !y, istnull
+    jmp ende        side 0b01
+istzwei:
+    jmp ende        side 0b10
+istnull:
+    jmp ende        side 0b00
+ende:
+    set pins, 0
+    irq nowait 0
+.wrap
+; 21
+
+.program writeps2 
+; write bits in a loop to not get into race conditions with reads
     irq nowait 0
 .wrap_target
-    pull
     wait 1 irq 0
-    set pindirs, 3
-    set pins, 2
-    wait 0 GPIO 17
     set pindirs, 1
     set x, 8
-outbits:
-    nop [2]
+outbit:
+    wait 0  GPIO 17 [1]
     out pins, 1
-    wait 1 GPIO 17
-    wait 0 GPIO 17
-    jmp x-- outbits
-    nop [2]
-    set pins, 1 [5]
-    set pindirs 0
-    wait 0 GPIO 16
-;    wait 0 GPIO 17
-;    wait 1 GPIO 17
-    wait 1 GPIO 16
-    set pindirs, 0
-    irq nowait 0
+    wait 1  GPIO 17 [1]
+    jmp x-- outbit
+    irq nowait 1
 .wrap
+; 30
 
 % c-sdk {
 static inline void readps2_program_init(PIO pio, uint sm, uint offset, uint pin) {
@@ -56,14 +67,14 @@ static inline void readps2_program_init(PIO pio, uint sm, uint offset, uint pin)
     sm_config_set_in_pins(&c, pin);
 
     // Set the pin directions to input at the PIO
-    pio_sm_set_consecutive_pindirs(pio, sm, pin, 2, false);
+//    pio_sm_set_consecutive_pindirs(pio, sm, pin, 2, true);
 
-    sm_config_set_out_pins(&c, pin, 2);
-    sm_config_set_set_pins(&c, pin, 2);
+//    sm_config_set_out_pins(&c, pin, 2);
+//    sm_config_set_set_pins(&c, pin, 2);
 
     // Connect these GPIOs to this PIO block
-    pio_gpio_init(pio, pin);
-    pio_gpio_init(pio, pin + 1);
+//    pio_gpio_init(pio, pin);
+//    pio_gpio_init(pio, pin + 1);
 
     // PS/2 is lsb first, so shift right
     sm_config_set_in_shift(
@@ -80,69 +91,18 @@ static inline void readps2_program_init(PIO pio, uint sm, uint offset, uint pin)
     pio_sm_set_enabled(pio, sm, true);
 }
 
-static inline void pinstate_program_init(PIO pio, uint sm, uint offset, uint pin) {
-    pio_sm_config c = pinstate_program_get_default_config(offset);
-
-    // Set the IN base pin to the provided `pin` parameter. This is the data
-    // pin, and the next-numbered GPIO is used as the clock pin.
-    sm_config_set_in_pins(&c, pin);
-
-    // Set the pin directions to input at the PIO
-    pio_sm_set_consecutive_pindirs(pio, sm, pin, 2, true);
-
-    sm_config_set_out_pins(&c, pin, 2);
-    sm_config_set_set_pins(&c, pin, 2);
-
-    // Connect these GPIOs to this PIO block
+static inline void setpins_program_init(PIO pio, uint sm, uint offset, uint pin) {
+    pio_sm_config c = setpins_program_get_default_config(offset);
+//    pio_sm_set_consecutive_pindirs(pio, sm, pin, 2, true);
+//    sm_config_set_out_pins(&c, pin, 2);
     pio_gpio_init(pio, pin);
     pio_gpio_init(pio, pin + 1);
-
-    // PS/2 is lsb first, so shift right
-    sm_config_set_out_shift(
-        &c,
-        true,  // Shift-to-right = true
-        false, // Autopull disabled
-        1      // Autopull threshold = 1
-    );
-
-    sm_config_set_clkdiv(&c, 625); // one cycle is 5 microseconds
-
-    // Load our configuration, and start the program from the beginning
-    pio_sm_init(pio, sm, offset, &c);
-    pio_sm_set_enabled(pio, sm, true);
-
-}
-
-static inline void writeps2_program_init(PIO pio, uint sm, uint offset, uint pin) {
-    pio_sm_config c = writeps2_program_get_default_config(offset);
-
-    // Set the IN base pin to the provided `pin` parameter. This is the data
-    // pin, and the next-numbered GPIO is used as the clock pin.
-    sm_config_set_in_pins(&c, pin);
-
-    // Set the pin directions to input at the PIO
-    pio_sm_set_consecutive_pindirs(pio, sm, pin, 2, true);
-
-    sm_config_set_out_pins(&c, pin, 2);
     sm_config_set_set_pins(&c, pin, 2);
-
-    // Connect these GPIOs to this PIO block
-    pio_gpio_init(pio, pin);
-    pio_gpio_init(pio, pin + 1);
-
-    // PS/2 is lsb first, so shift right
-    sm_config_set_out_shift(
-        &c,
-        true,  // Shift-to-right = true
-        false, // Autopull disabled
-        9      // Autopull threshold = 1
-    );
-
-    sm_config_set_clkdiv(&c, 625); // one cycle is 5 microseconds
-
-    // Load our configuration, and start the program from the beginning
+    sm_config_set_sideset_pins(&c, pin);
+    sm_config_set_out_shift(&c, true, true, 2);
+//    sm_config_set_clkdiv(&c, 1); // one cycle is 8 us
     pio_sm_init(pio, sm, offset, &c);
     pio_sm_set_enabled(pio, sm, true);
-
 }
+
 %}
