@@ -8,7 +8,6 @@ readbit:
     in   pins, 1
     wait 1     GPIO 17
     jmp x--, readbit
-    wait 1 gpio 16
     irq 1
 .wrap
 ; 9
@@ -53,6 +52,7 @@ outbit:
     set pindirs, 0 ; stop bit
     wait 0 gpio 16 ; wait for device ack
     wait 1 gpio 16 ; wait for device ack
+    wait 1 GPIO 17
     irq 1
 .wrap
 ; 32

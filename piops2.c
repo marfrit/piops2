@@ -50,17 +50,7 @@ u_int16_t ps2_host_send(u_int8_t data, uint smsetpin, uint smwrite, PIO pio)
     pio->irq_force = 4;
     pio_sm_put_blocking(pio, smsetpin, 2);
     pio->irq_force = 8;
-    while (!(pio->irq & 2)){
-        sleep_us(5);
-        printf("Ich warte\n");
-    };
     pio_sm_put_blocking(pio, smwrite, send);
-    while (!(pio->irq & 2)){
-        sleep_us(5);
-        printf("Ich warte\n");
-    };
-    sleep_us(80);
-    pio->irq_force = pio->irq & ~ 2;
 }
 
 int main() {
@@ -82,13 +72,15 @@ int main() {
     writeps2_program_init(pio, sm3, offset3, DATA);
 
     sleep_ms(2500);
-    pio->irq_force = pio->irq | 2;
+
     ps2_host_send(0xff, sm2, sm3, pio);
 
-//    pio->irq_force = pio->irq | 1;
+
     printf("Leseschleife\n");
 
     while (1) {
+        pio->irq_force = 1;
+
         if (pio_sm_get_rx_fifo_level(pio, sm1) > 0) {
             rxdata = pio_sm_get_blocking(pio, sm1);
         } else {
@@ -98,13 +90,10 @@ int main() {
             code = (rxdata >> 22) & 0xff;
             printf("received 0x%02x\n", code);
             if(code == 0xbe) {
-                sleep_ms(10);
                 ps2_host_send(0xf8, sm2, sm3, pio);
+                sleep_us(100);
             }
         }
-        while (!(pio->irq & 2));
-        sleep_us(80);
-        pio->irq_force = 1;
     }
 
 }
