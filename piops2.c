@@ -29,13 +29,42 @@ bool oddParity(u_int8_t x)
 void inhibit(){
 }
 
-u_int16_t ps2_host_send(u_int8_t data, uint sm2, PIO pio)
+u_int16_t prepdata(u_int8_t data){
+    u_int16_t out;
+
+    out = data | (oddParity(data) << 8); // add parity to the front of data since we right shift on output
+    out = 511 & (~ out);               // invert value to fit pio out pindirs syntax
+    return out;
+}
+
+u_int16_t ps2_host_send(u_int8_t data, uint smsetpin, uint smwrite, PIO pio)
 {
+    u_int16_t send = prepdata(data);
+
+    pio->irq_force = 4;
+    pio_sm_put_blocking(pio, smsetpin, 1);
+    sleep_us(200);
+    pio->irq_force = 4;
+    pio_sm_put_blocking(pio, smsetpin, 3);
+    sleep_us(200);
+    pio->irq_force = 4;
+    pio_sm_put_blocking(pio, smsetpin, 2);
+    pio->irq_force = 8;
+    while (!(pio->irq & 2)){
+        sleep_us(5);
+        printf("Ich warte\n");
+    };
+    pio_sm_put_blocking(pio, smwrite, send);
+    while (!(pio->irq & 2)){
+        sleep_us(5);
+        printf("Ich warte\n");
+    };
+    sleep_us(80);
+    pio->irq_force = pio->irq & ~ 2;
 }
 
 int main() {
     u_int32_t rxdata;
-    u_int32_t out;
     u_int8_t  code;
     stdio_init_all();
 
@@ -43,48 +72,39 @@ int main() {
 
     uint offset1 = pio_add_program(pio, &readps2_program);
     uint sm1 = pio_claim_unused_sm(pio, true);
-    uint offset3 = pio_add_program(pio, &setpins_program);
+    uint offset2 = pio_add_program(pio, &setpins_program);
+    uint sm2 = pio_claim_unused_sm(pio, true);
+    uint offset3 = pio_add_program(pio, &writeps2_program);
     uint sm3 = pio_claim_unused_sm(pio, true);
-    uint offset4 = pio_add_program(pio, &writeps2_program);
-    uint sm4 = pio_claim_unused_sm(pio, true);
 
     readps2_program_init (pio, sm1, offset1, DATA);
-    setpins_program_init (pio, sm3, offset3, DATA);
-    writeps2_program_init(pio, sm4, offset4, DATA);
-
-    pio->irq_force = 2;
+    setpins_program_init (pio, sm2, offset2, DATA);
+    writeps2_program_init(pio, sm3, offset3, DATA);
 
     sleep_ms(2500);
-    pio->irq_force = 4;
-    pio_sm_put_blocking(pio, sm3, 1);
-    sleep_us(200);
-    pio->irq_force = 4;
-    pio_sm_put_blocking(pio, sm3, 3);
-    sleep_us(200);
-    pio->irq_force = 4;
-    pio_sm_put_blocking(pio, sm3, 2);
-    printf("bin drin\n");
+    pio->irq_force = pio->irq | 2;
+    ps2_host_send(0xff, sm2, sm3, pio);
 
-    out = 0xf8;  // Data to write 
-    out = out | (oddParity(out) << 8); // add parity to the front of data since we right shift on output
-    out = 511 & (~ out);               // invert value to fit pio out pindirs syntax
+//    pio->irq_force = pio->irq | 1;
+    printf("Leseschleife\n");
 
-    pio->irq_force = 8;
-    pio_sm_put_blocking(pio, sm4, out);
-    printf("bin raus 0x%04x\n", out);
-
-    pio->irq_force = 1;
     while (1) {
         if (pio_sm_get_rx_fifo_level(pio, sm1) > 0) {
             rxdata = pio_sm_get_blocking(pio, sm1);
-            pio->irq_force = 1;
         } else {
             rxdata = 0;
         }
         if (rxdata) {
             code = (rxdata >> 22) & 0xff;
             printf("received 0x%02x\n", code);
+            if(code == 0xbe) {
+                sleep_ms(10);
+                ps2_host_send(0xf8, sm2, sm3, pio);
+            }
         }
+        while (!(pio->irq & 2));
+        sleep_us(80);
+        pio->irq_force = 1;
     }
 
 }
