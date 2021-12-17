@@ -35,64 +35,49 @@ u_int16_t ps2_host_send(u_int8_t data, uint sm2, PIO pio)
 
 int main() {
     u_int32_t rxdata;
+    u_int32_t out;
     u_int8_t  code;
     stdio_init_all();
 
-//    gpio_set_function(DATA , GPIO_FUNC_SIO);
-//    gpio_set_function(CLOCK, GPIO_FUNC_SIO);
-//    sio_hw->gpio_oe = 3 << 15;
-
     PIO pio = pio1;
 
-    uint offset = pio_add_program(pio, &readps2_program);
-    uint sm = pio_claim_unused_sm(pio, true);
-    readps2_program_init(pio, sm, offset, DATA);
+    uint offset1 = pio_add_program(pio, &readps2_program);
+    uint sm1 = pio_claim_unused_sm(pio, true);
+    uint offset3 = pio_add_program(pio, &setpins_program);
+    uint sm3 = pio_claim_unused_sm(pio, true);
+    uint offset4 = pio_add_program(pio, &writeps2_program);
+    uint sm4 = pio_claim_unused_sm(pio, true);
 
-    uint offset2 = pio_add_program(pio, &setpins_program);
-//    gpio_set_pulls(16, true, false);
-//    gpio_set_pulls(17, true, false);
-    uint sm2 = pio_claim_unused_sm(pio, true);
-    setpins_program_init(pio, sm2, offset2, DATA);
+    readps2_program_init (pio, sm1, offset1, DATA);
+    setpins_program_init (pio, sm3, offset3, DATA);
+    writeps2_program_init(pio, sm4, offset4, DATA);
 
-//    while (1)
-//    {
-//        sleep_ms(3);
-//        pio_sm_put_blocking(pio, sm2, 0);
-//        sleep_ms(5);
-//        pio_sm_put_blocking(pio, sm2, 1);
-//        sleep_ms(7);
-//        pio_sm_put_blocking(pio, sm2, 2);
-//        sleep_ms(11);
-//        pio_sm_put_blocking(pio, sm2, 3);
-//        sleep_ms(13);
-//        pio_sm_put_blocking(pio, sm2, 0);
-//        pio_sm_put_blocking(pio, sm2, 0);
-//        sleep_ms(1000);
-//    }
-    
+    pio->irq_force = 2;
 
-//    while (gpio_get(CLOCK))
-//    {
-//    }
+    sleep_ms(2500);
+    pio->irq_force = 4;
+    pio_sm_put_blocking(pio, sm3, 1);
+    sleep_us(200);
+    pio->irq_force = 4;
+    pio_sm_put_blocking(pio, sm3, 3);
+    sleep_us(200);
+    pio->irq_force = 4;
+    pio_sm_put_blocking(pio, sm3, 2);
+    printf("bin drin\n");
 
-//    for(u_int8_t i = 0; i < 10; i++) {
-//        sleep_us(15);
-//        pio_sm_put_blocking(pio, sm2, 1);
-//        //x != x;
-//        while (!gpio_get(CLOCK))
-//        {
-//        }
-//        while (gpio_get(CLOCK))
-//        {
-//        }
-//    }
+    out = 0xf8;  // Data to write 
+    out = out | (oddParity(out) << 8); // add parity to the front of data since we right shift on output
+    out = 511 & (~ out);               // invert value to fit pio out pindirs syntax
 
-//    pio_sm_put_blocking(pio, sm2, 0);
+    pio->irq_force = 8;
+    pio_sm_put_blocking(pio, sm4, out);
+    printf("bin raus 0x%04x\n", out);
 
-    printf("ready to go\n");
+    pio->irq_force = 1;
     while (1) {
-        if (pio_sm_get_rx_fifo_level(pio, sm) > 0) {
-            rxdata = pio_sm_get_blocking(pio, sm);
+        if (pio_sm_get_rx_fifo_level(pio, sm1) > 0) {
+            rxdata = pio_sm_get_blocking(pio, sm1);
+            pio->irq_force = 1;
         } else {
             rxdata = 0;
         }
