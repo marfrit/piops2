@@ -2,7 +2,6 @@
 .wrap_target
     wait 1 irq 0
     set x, 10
-    set pindirs 0
 readbit:
     wait 0     GPIO 17 [4]
     in   pins, 1
@@ -10,32 +9,17 @@ readbit:
     jmp x--, readbit
     irq 1
 .wrap
-; 9
+; 7
 
 .program setpins
 ; The PS/2 keyboard protocol is an open collector protocol, so 
 ; setting pins to output is a low state, setting pins to input
 ; is a high state
-.side_set 2 opt pindirs
-;    irq nowait 0    side 0b00
 .wrap_target
     wait 1 irq 2
-    out x, 1
-    out y, 1
-    jmp !x, nullodereins      ; FIFO can be 01 or 11
-    jmp !y, istzwei           ; FIFA was 10
-    jmp ende        side 0b11 ; FIFO was 11
-nullodereins:
-    jmp !y, istnull
-    jmp ende        side 0b01
-istzwei:
-    jmp ende        side 0b10
-istnull:
-    jmp ende        side 0b00
-ende:
-    set pins, 0
+    out pindirs, 2
 .wrap
-; 20
+; 9
 
 .program writeps2 
 ; write bits in a loop to not get into race conditions with reads
@@ -55,7 +39,7 @@ outbit:
     wait 1 GPIO 17
     irq 1
 .wrap
-; 32
+; 22
 
 % c-sdk {
 static inline void readps2_program_init(PIO pio, uint sm, uint offset, uint pin) {
